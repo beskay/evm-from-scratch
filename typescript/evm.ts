@@ -4,7 +4,7 @@ export default function evm(code: Uint8Array) {
   let stack: bigint[] = [];
 
   for (let i = 0; i < code.length; i++) {
-    console.log(`opcode ${code[i]} and index ${i}`);
+    //console.log(`opcode ${code[i]} and index ${i}`);
     switch (code[i]) {
       // STOP
       case 0x0: {
@@ -13,53 +13,38 @@ export default function evm(code: Uint8Array) {
       // ADD
       case 0x01: {
         // pop first two stack items
-        let a = stack.shift();
-        let b = stack.shift();
-
-        // if vars are undefined, set result to zero
-        let res: bigint;
-        if (a != undefined && b != undefined) res = a + b;
-        else res = 0n;
+        let a = stack.shift() as bigint;
+        let b = stack.shift() as bigint;
 
         // push result on top of the stack
-        stack.unshift(res & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
+        stack.unshift((a + b) & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
         break;
       }
       // MUL
       case 0x02: {
         // pop first two stack items
-        let a = stack.shift();
-        let b = stack.shift();
-
-        // if vars are undefined, set result to zero
-        let res: bigint;
-        if (a != undefined && b != undefined) res = a * b;
-        else res = 0n;
+        let a = stack.shift() as bigint;
+        let b = stack.shift() as bigint;
 
         // push result on top of the stack
-        stack.unshift(res & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
+        stack.unshift((a * b) & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
         break;
       }
       // SUB
       case 0x03: {
         // pop first two stack items
-        let a = stack.shift();
-        let b = stack.shift();
-
-        // if vars are undefined, set result to zero
-        let res: bigint;
-        if (a != undefined && b != undefined) res = a - b;
-        else res = 0n;
+        let a = stack.shift() as bigint;
+        let b = stack.shift() as bigint;
 
         // push result on top of the stack
-        stack.unshift(res & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
+        stack.unshift((a - b) & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
         break;
       }
       // DIV
       case 0x04: {
         // pop first two stack items
-        let a = stack.shift();
-        let b = stack.shift();
+        let a = stack.shift() as bigint;
+        let b = stack.shift() as bigint;
 
         // if division by zero, return 0
         if (b == 0n) {
@@ -67,13 +52,8 @@ export default function evm(code: Uint8Array) {
           break;
         }
 
-        // if vars are undefined, set result to zero
-        let res: bigint;
-        if (a != undefined && b != undefined) res = a / b;
-        else res = 0n;
-
         // push result on top of the stack
-        stack.unshift(res & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
+        stack.unshift((a / b) & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
         break;
       }
       // SDIV
@@ -81,10 +61,131 @@ export default function evm(code: Uint8Array) {
         const a = BigInt.asIntN(32, stack.shift() as bigint);
         const b = BigInt.asIntN(32, stack.shift() as bigint);
 
-        let res = a / b;
+        // if division by zero, return 0
+        if (b == 0n) {
+          stack.unshift(0n);
+          break;
+        }
 
         // push result on top of the stack
-        stack.unshift(res & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
+        stack.unshift((a / b) & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
+        break;
+      }
+      // MOD
+      case 0x06: {
+        // pop first two stack items
+        let a = stack.shift() as bigint;
+        let b = stack.shift() as bigint;
+
+        // if mod zero, return 0
+        if (b == 0n) {
+          stack.unshift(0n);
+          break;
+        }
+
+        // push result on top of the stack
+        stack.unshift(a % b & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
+        break;
+      }
+      // SMOD
+      case 0x07: {
+        const a = BigInt.asIntN(32, stack.shift() as bigint);
+        const b = BigInt.asIntN(32, stack.shift() as bigint);
+
+        // if mod zero, return 0
+        if (b == 0n) {
+          stack.unshift(0n);
+          break;
+        }
+
+        // push result on top of the stack
+        stack.unshift(a % b & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
+        break;
+      }
+      // LT
+      case 0x10: {
+        // pop first two stack items
+        let a = stack.shift() as bigint;
+        let b = stack.shift() as bigint;
+
+        stack.unshift(a < b ? 1n : 0n);
+        break;
+      }
+      // GT
+      case 0x11: {
+        // pop first two stack items
+        let a = stack.shift() as bigint;
+        let b = stack.shift() as bigint;
+
+        stack.unshift(a > b ? 1n : 0n);
+        break;
+      }
+      // SLT
+      case 0x12: {
+        // pop first two stack items
+        const a = BigInt.asIntN(32, stack.shift() as bigint);
+        const b = BigInt.asIntN(32, stack.shift() as bigint);
+
+        stack.unshift(a < b ? 1n : 0n);
+        break;
+      }
+      // SGT
+      case 0x13: {
+        // pop first two stack items
+        const a = BigInt.asIntN(32, stack.shift() as bigint);
+        const b = BigInt.asIntN(32, stack.shift() as bigint);
+
+        stack.unshift(a > b ? 1n : 0n);
+        break;
+      }
+      // EQ
+      case 0x14: {
+        // pop first two stack items
+        let a = stack.shift() as bigint;
+        let b = stack.shift() as bigint;
+
+        stack.unshift(a === b ? 1n : 0n);
+        break;
+      }
+      // ISZERO
+      case 0x15: {
+        let a = stack.shift() as bigint;
+
+        stack.unshift(a === 0n ? 1n : 0n);
+        break;
+      }
+      // AND
+      case 0x16: {
+        // pop first two stack items
+        let a = stack.shift() as bigint;
+        let b = stack.shift() as bigint;
+
+        stack.unshift(a & b);
+        break;
+      }
+      // OR
+      case 0x17: {
+        // pop first two stack items
+        let a = stack.shift() as bigint;
+        let b = stack.shift() as bigint;
+
+        stack.unshift(a | b);
+        break;
+      }
+      // XOR
+      case 0x18: {
+        // pop first two stack items
+        let a = stack.shift() as bigint;
+        let b = stack.shift() as bigint;
+
+        stack.unshift(a ^ b);
+        break;
+      }
+      // NOT
+      case 0x19: {
+        let a = stack.shift() as bigint;
+
+        stack.unshift(MAX_UINT256 ^ a);
         break;
       }
       // POP
@@ -115,6 +216,6 @@ export default function evm(code: Uint8Array) {
     }
   }
 
-  console.log(stack);
+  //console.log(stack);
   return { stack: stack };
 }
