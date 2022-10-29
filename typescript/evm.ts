@@ -1,211 +1,229 @@
-export default function evm(code: Uint8Array) {
-  let MAX_UINT256 = (1n << 256n) - 1n; // 2**256 - 1
+const MAX_UINT256 = (1n << 256n) - 1n; // 2**256 - 1
 
-  let stack: bigint[] = [];
+class Stack {
+  stack: bigint[] = [];
+
+  pop(): bigint {
+    // shift is like pop, but removes the first element in the array
+    return this.stack.shift() as bigint;
+  }
+
+  push(value: bigint) {
+    if (value < 0n || value > MAX_UINT256) console.log("Invalid value");
+    if (this.stack.length + 1 > 1024) console.log("MAX_STACK_DEPTH");
+
+    // unshift is like push(), except it adds elements to the beginning of an array
+    this.stack.unshift(value);
+  }
+}
+
+class Memory {}
+
+export default function evm(code: Uint8Array) {
+  const stk = new Stack();
 
   for (let i = 0; i < code.length; i++) {
     //console.log(`opcode ${code[i]} and index ${i}`);
     switch (code[i]) {
       // STOP
       case 0x0: {
-        return { stack: stack };
+        return { stack: stk.stack };
       }
       // ADD
       case 0x01: {
         // pop first two stack items
-        let a = stack.shift() as bigint;
-        let b = stack.shift() as bigint;
+        let a = stk.pop();
+        let b = stk.pop();
 
         // push result on top of the stack
-        stack.unshift((a + b) & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
+        stk.push((a + b) & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
         break;
       }
       // MUL
       case 0x02: {
         // pop first two stack items
-        let a = stack.shift() as bigint;
-        let b = stack.shift() as bigint;
+        let a = stk.pop();
+        let b = stk.pop();
 
         // push result on top of the stack
-        stack.unshift((a * b) & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
+        stk.push((a * b) & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
         break;
       }
       // SUB
       case 0x03: {
         // pop first two stack items
-        let a = stack.shift() as bigint;
-        let b = stack.shift() as bigint;
+        let a = stk.pop();
+        let b = stk.pop();
 
         // push result on top of the stack
-        stack.unshift((a - b) & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
+        stk.push((a - b) & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
         break;
       }
       // DIV
       case 0x04: {
         // pop first two stack items
-        let a = stack.shift() as bigint;
-        let b = stack.shift() as bigint;
+        let a = stk.pop();
+        let b = stk.pop();
 
         // if division by zero, return 0
         if (b == 0n) {
-          stack.unshift(0n);
+          stk.push(0n);
           break;
         }
 
         // push result on top of the stack
-        stack.unshift((a / b) & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
+        stk.push((a / b) & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
         break;
       }
       // SDIV
       case 0x05: {
-        const a = BigInt.asIntN(32, stack.shift() as bigint);
-        const b = BigInt.asIntN(32, stack.shift() as bigint);
+        const a = BigInt.asIntN(32, stk.pop());
+        const b = BigInt.asIntN(32, stk.pop());
 
         // if division by zero, return 0
         if (b == 0n) {
-          stack.unshift(0n);
+          stk.push(0n);
           break;
         }
 
         // push result on top of the stack
-        stack.unshift((a / b) & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
+        stk.push((a / b) & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
         break;
       }
       // MOD
       case 0x06: {
         // pop first two stack items
-        let a = stack.shift() as bigint;
-        let b = stack.shift() as bigint;
+        let a = stk.pop();
+        let b = stk.pop();
 
         // if mod zero, return 0
         if (b == 0n) {
-          stack.unshift(0n);
+          stk.push(0n);
           break;
         }
 
         // push result on top of the stack
-        stack.unshift(a % b & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
+        stk.push(a % b & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
         break;
       }
       // SMOD
       case 0x07: {
-        const a = BigInt.asIntN(32, stack.shift() as bigint);
-        const b = BigInt.asIntN(32, stack.shift() as bigint);
+        const a = BigInt.asIntN(32, stk.pop());
+        const b = BigInt.asIntN(32, stk.pop());
 
         // if mod zero, return 0
         if (b == 0n) {
-          stack.unshift(0n);
+          stk.push(0n);
           break;
         }
 
         // push result on top of the stack
-        stack.unshift(a % b & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
+        stk.push(a % b & MAX_UINT256); // & MAX_UINT256 is the same as % MAX_UINT256 + 1
         break;
       }
       // LT
       case 0x10: {
         // pop first two stack items
-        let a = stack.shift() as bigint;
-        let b = stack.shift() as bigint;
+        let a = stk.pop();
+        let b = stk.pop();
 
-        stack.unshift(a < b ? 1n : 0n);
+        stk.push(a < b ? 1n : 0n);
         break;
       }
       // GT
       case 0x11: {
         // pop first two stack items
-        let a = stack.shift() as bigint;
-        let b = stack.shift() as bigint;
+        let a = stk.pop();
+        let b = stk.pop();
 
-        stack.unshift(a > b ? 1n : 0n);
+        stk.push(a > b ? 1n : 0n);
         break;
       }
       // SLT
       case 0x12: {
         // pop first two stack items
-        const a = BigInt.asIntN(32, stack.shift() as bigint);
-        const b = BigInt.asIntN(32, stack.shift() as bigint);
+        const a = BigInt.asIntN(32, stk.pop());
+        const b = BigInt.asIntN(32, stk.pop());
 
-        stack.unshift(a < b ? 1n : 0n);
+        stk.push(a < b ? 1n : 0n);
         break;
       }
       // SGT
       case 0x13: {
         // pop first two stack items
-        const a = BigInt.asIntN(32, stack.shift() as bigint);
-        const b = BigInt.asIntN(32, stack.shift() as bigint);
+        const a = BigInt.asIntN(32, stk.pop());
+        const b = BigInt.asIntN(32, stk.pop());
 
-        stack.unshift(a > b ? 1n : 0n);
+        stk.push(a > b ? 1n : 0n);
         break;
       }
       // EQ
       case 0x14: {
         // pop first two stack items
-        let a = stack.shift() as bigint;
-        let b = stack.shift() as bigint;
+        let a = stk.pop();
+        let b = stk.pop();
 
-        stack.unshift(a === b ? 1n : 0n);
+        stk.push(a === b ? 1n : 0n);
         break;
       }
       // ISZERO
       case 0x15: {
-        let a = stack.shift() as bigint;
+        let a = stk.pop();
 
-        stack.unshift(a === 0n ? 1n : 0n);
+        stk.push(a === 0n ? 1n : 0n);
         break;
       }
       // AND
       case 0x16: {
         // pop first two stack items
-        let a = stack.shift() as bigint;
-        let b = stack.shift() as bigint;
+        let a = stk.pop();
+        let b = stk.pop();
 
-        stack.unshift(a & b);
+        stk.push(a & b);
         break;
       }
       // OR
       case 0x17: {
         // pop first two stack items
-        let a = stack.shift() as bigint;
-        let b = stack.shift() as bigint;
+        let a = stk.pop();
+        let b = stk.pop();
 
-        stack.unshift(a | b);
+        stk.push(a | b);
         break;
       }
       // XOR
       case 0x18: {
         // pop first two stack items
-        let a = stack.shift() as bigint;
-        let b = stack.shift() as bigint;
+        let a = stk.pop();
+        let b = stk.pop();
 
-        stack.unshift(a ^ b);
+        stk.push(a ^ b);
         break;
       }
       // NOT
       case 0x19: {
-        let a = stack.shift() as bigint;
+        let a = stk.pop();
 
-        stack.unshift(MAX_UINT256 ^ a);
+        stk.push(MAX_UINT256 ^ a);
         break;
       }
       // BYTE
       case 0x1a: {
         // pop first two stack items
-        let a = stack.shift() as bigint; // offset
-        let b = stack.shift() as bigint; // value
+        let a = stk.pop(); // offset
+        let b = stk.pop(); // value
 
-        stack.unshift(a < 32 ? (b >> ((31n - a) * 8n)) & 0xffn : 0n);
+        stk.push(a < 32 ? (b >> ((31n - a) * 8n)) & 0xffn : 0n);
         break;
       }
       // POP
       case 0x50: {
-        // shift is like pop, but removes the first element in the array
-        stack.shift();
+        stk.pop();
         break;
       }
       // JUMP
       case 0x56: {
-        let a = stack.shift() as bigint; // JUMPDEST
+        let a = stk.pop(); // JUMPDEST
 
         // change program counter to jumpdest
         i = Number(a);
@@ -214,21 +232,20 @@ export default function evm(code: Uint8Array) {
       // JUMPI
       case 0x57: {
         // pop first two stack items
-        let a = stack.shift() as bigint; // JUMPDEST
-        let b = stack.shift() as bigint; // Condition (1 = jump, 0 = continue as usual)
+        let a = stk.pop(); // JUMPDEST
+        let b = stk.pop(); // Condition (1 = jump, 0 = continue as usual)
 
         if (b != 0n) i = Number(a);
         break;
       }
       // PC
       case 0x58: {
-        stack.unshift(BigInt(i));
+        stk.push(BigInt(i));
         break;
       }
       // PUSH1
       case 0x60: {
-        // unshift is like push(), except it adds elements to the beginning of an array
-        stack.unshift(BigInt(code[++i])); // have to transform to bigint to append an "n"
+        stk.push(BigInt(code[++i])); // have to transform to bigint to append an "n"
         break;
       }
       case 0x61: {
@@ -236,7 +253,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 2; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x62: {
@@ -244,7 +261,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 3; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x63: {
@@ -252,7 +269,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 4; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x64: {
@@ -260,7 +277,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 5; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x65: {
@@ -268,7 +285,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 6; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x66: {
@@ -276,7 +293,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 7; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x67: {
@@ -284,7 +301,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 8; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x68: {
@@ -292,7 +309,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 9; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x69: {
@@ -300,7 +317,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 10; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x6a: {
@@ -308,7 +325,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 11; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x6b: {
@@ -316,7 +333,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 12; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x6c: {
@@ -324,7 +341,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 13; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x6d: {
@@ -332,7 +349,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 14; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x6e: {
@@ -340,7 +357,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 15; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x6f: {
@@ -348,7 +365,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 16; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x70: {
@@ -356,7 +373,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 17; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x71: {
@@ -364,7 +381,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 18; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x72: {
@@ -372,7 +389,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 19; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x73: {
@@ -380,7 +397,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 20; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x74: {
@@ -388,7 +405,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 21; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x75: {
@@ -396,7 +413,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 22; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x76: {
@@ -404,7 +421,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 23; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x77: {
@@ -412,7 +429,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 24; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x78: {
@@ -420,7 +437,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 25; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x79: {
@@ -428,7 +445,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 26; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x7a: {
@@ -436,7 +453,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 27; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x7b: {
@@ -444,7 +461,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 28; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x7c: {
@@ -452,7 +469,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 29; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x7d: {
@@ -460,7 +477,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 30; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x7e: {
@@ -468,7 +485,7 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 31; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       case 0x7f: {
@@ -477,53 +494,53 @@ export default function evm(code: Uint8Array) {
         for (let j = 0; j < 32; j++)
           tmp += code[++i].toString(16).padStart(2, "0");
         // convert from hex string to bigint and push to stack
-        stack.unshift(BigInt(`0x${tmp}`));
+        stk.push(BigInt(`0x${tmp}`));
         break;
       }
       // DUP1
       case 0x80: {
-        stack.unshift(stack[0]);
+        stk.push(stk.stack[0]);
         break;
       }
       // DUP2
       case 0x81: {
-        stack.unshift(stack[1]);
+        stk.push(stk.stack[1]);
         break;
       }
       // DUP3
       case 0x82: {
-        stack.unshift(stack[2]);
+        stk.push(stk.stack[2]);
         break;
       }
       // DUP4
       case 0x83: {
-        stack.unshift(stack[3]);
+        stk.push(stk.stack[3]);
         break;
       }
       // DUP5
       case 0x84: {
-        stack.unshift(stack[4]);
+        stk.push(stk.stack[4]);
         break;
       }
       // SWAP1
       case 0x90: {
-        let tmp = stack[1];
-        stack[1] = stack[0];
-        stack[0] = tmp;
+        let tmp = stk.stack[1];
+        stk.stack[1] = stk.stack[0];
+        stk.stack[0] = tmp;
         break;
       }
       // SWAP2
       case 0x91: {
-        let tmp = stack[2];
-        stack[2] = stack[0];
-        stack[0] = tmp;
+        let tmp = stk.stack[2];
+        stk.stack[2] = stk.stack[0];
+        stk.stack[0] = tmp;
         break;
       }
       // SWAP3
       case 0x92: {
-        let tmp = stack[3];
-        stack[3] = stack[0];
-        stack[0] = tmp;
+        let tmp = stk.stack[3];
+        stk.stack[3] = stk.stack[0];
+        stk.stack[0] = tmp;
         break;
       }
 
@@ -534,6 +551,6 @@ export default function evm(code: Uint8Array) {
     }
   }
 
-  //console.log(stack);
-  return { stack: stack };
+  //console.log(stk.stack);
+  return { stack: stk.stack };
 }
