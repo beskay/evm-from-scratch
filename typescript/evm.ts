@@ -1,3 +1,5 @@
+const keccak256 = require("keccak256");
+
 const MAX_UINT256 = (1n << 256n) - 1n; // 2**256 - 1
 
 class Stack {
@@ -28,7 +30,6 @@ class Memory {
     this.check_expand(offset);
 
     this.memory[Number(offset)] = value;
-    console.log(this.memory);
   }
 
   // MSTORE
@@ -36,7 +37,7 @@ class Memory {
     if (offset < 0n || offset > MAX_UINT256) throw new Error("Invalid offset");
     if (value < 0n || value > MAX_UINT256) throw new Error("Invalid word");
 
-    this.check_expand(offset);
+    this.check_expand(offset + 31n);
 
     for (let i = 0; i < 32; i++) {
       this.memory[Number(offset) + 31 - i] =
@@ -45,18 +46,13 @@ class Memory {
   }
 
   // MLOAD
-  // load 32 bytes starting from offset, maybe work with hex strings again
+  // load 32 bytes starting from offset
   load(offset: bigint): bigint {
     if (offset < 0n || offset > MAX_UINT256) throw new Error("Invalid offset");
-    this.check_expand(offset);
+    this.check_expand(offset + 31n);
 
     let tmp: string = "";
     for (let i = offset; i < offset + 32n; i++) {
-      // if bigger than array, just return 0
-      if (i >= this.memory.length) {
-        tmp += 0n.toString(16).padStart(2, "0");
-        continue;
-      }
       tmp += this.memory[Number(i)].toString(16).padStart(2, "0");
     }
     return BigInt(`0x${tmp}`);
@@ -69,10 +65,10 @@ class Memory {
     if (offset < this.size()) return;
 
     // divide offset by 32 and take the whole number, e.g. 65 / 32 => 2
-    let wordsInMemory: number = parseInt((offset / 32n).toString()); // 1 word = 32 bytes
+    let wordAccessed: number = parseInt((offset / 32n).toString()); // 1 word = 32 bytes
 
     // increase by 32 bytes
-    let newSizeInBytes: number = (wordsInMemory + 1) * 32;
+    let newSizeInBytes: number = (wordAccessed + 1) * 32;
     let currentSizeInBytes: bigint = this.size();
     for (let i = 0; i < newSizeInBytes - Number(currentSizeInBytes); i++)
       this.memory.push(0x00n);
@@ -88,9 +84,50 @@ class Memory {
   }
 }
 
-export default function evm(code: Uint8Array) {
+interface Transaction {
+  to: string;
+  from: string;
+  origin: string;
+  gasprice: string;
+  value: string;
+  data: string;
+}
+
+interface State {
+  [address: string]: AccountState;
+}
+
+interface AccountState {
+  balance: string;
+  code: string;
+  nonce: string;
+  storage: string;
+}
+
+interface Block {
+  coinbase: string;
+  timestamp: string;
+  number: string;
+  difficulty: string;
+  gaslimit: string;
+  chainid: string;
+}
+
+export default function evm(
+  code: Uint8Array,
+  tx: Transaction,
+  state: State,
+  block: Block
+) {
   const stk = new Stack();
   const mem = new Memory();
+
+  let worldState = new Map();
+  if (state != undefined) {
+    for (const [key, value] of Object.entries(state)) {
+      worldState.set(key, value);
+    }
+  }
 
   for (let pc = 0; pc < code.length; pc++) {
     //console.log(`opcode ${code[pc]} and index ${pc}`);
@@ -284,6 +321,125 @@ export default function evm(code: Uint8Array) {
         let b = stk.pop(); // value
 
         stk.push(a < 32 ? (b >> ((31n - a) * 8n)) & 0xffn : 0n);
+        break;
+      }
+      // SHA3
+      case 0x20: {
+        // pop first two stack items
+        let a = stk.pop(); // offset
+        let b = stk.pop(); // byte size to read from memory
+
+        let value = mem.load(a);
+        let bytesToHash = value >> ((32n - b) * 8n);
+
+        // convert bigint value to hex string and hash it
+        let hash = keccak256(`0x${bytesToHash.toString(16)}`).toString("hex");
+        // convert hash string back to bigint
+        stk.push(BigInt(`0x${hash}`));
+
+        break;
+      }
+      // ADDRESS
+      case 0x30: {
+        stk.push(BigInt(tx.to));
+        break;
+      }
+      // BALANCE
+      case 0x31: {
+        let a = stk.pop(); // address
+
+        // convert to hex string
+        let address = a.toString(16).padStart(40, "0");
+        let accountState: AccountState = worldState.get(`0x${address}`);
+
+        // check if defined, if yes return balance
+        let balance = accountState != undefined ? accountState.balance : 0n;
+        stk.push(BigInt(balance));
+        break;
+      }
+      // ORIGIN
+      case 0x32: {
+        stk.push(BigInt(tx.origin));
+        break;
+      }
+      // CALLER
+      case 0x33: {
+        stk.push(BigInt(tx.from));
+        break;
+      }
+      // CALLVALUE
+      case 0x34: {
+        stk.push(BigInt(tx.value));
+        break;
+      }
+      // CALLDATALOAD
+      case 0x35: {
+        let a = stk.pop(); // offset
+
+        // return string starting from offset padded to 64 characters
+        let data = tx.data.slice(Number(a * 2n)).padEnd(64, "0");
+
+        // convert hex string to bigint and push to stack
+        stk.push(BigInt(`0x${data}`));
+        break;
+      }
+      // CALLDATASIZE
+      case 0x36: {
+        let calldatasize = tx != undefined ? tx.data.length / 2 : 0;
+        stk.push(BigInt(calldatasize));
+        break;
+      }
+      // CALLDATACOPY
+      case 0x37: {
+        let a = stk.pop(); // destOffset (byte offset in memory)
+        let b = stk.pop(); // offset (byte offset in the calldata to copy)
+        let c = stk.pop(); // size (byte size to copy)
+
+        let calldataslice = tx.data.slice(Number(b), Number(c * 2n));
+        console.log(b);
+        console.log(c);
+        console.log(calldataslice);
+        let calldataAsUint = BigInt(`0x${calldataslice}`);
+        for (let i = 0; i < Number(c); i++) {
+          let byteToStore =
+            (calldataAsUint >> ((c - BigInt(i) - 1n) * 8n)) & 0xffn;
+          mem.store(a++, byteToStore);
+        }
+        break;
+      }
+      // GASPRICE
+      case 0x3a: {
+        stk.push(BigInt(tx.gasprice));
+        break;
+      }
+      // COINBASE
+      case 0x41: {
+        stk.push(BigInt(block.coinbase));
+        break;
+      }
+      // TIMESTAMP
+      case 0x42: {
+        stk.push(BigInt(block.timestamp));
+        break;
+      }
+      // NUMBER
+      case 0x43: {
+        stk.push(BigInt(block.number));
+        break;
+      }
+      // DIFFICULTY
+      case 0x44: {
+        stk.push(BigInt(block.difficulty));
+        break;
+      }
+      // GASLIMIT
+      case 0x45: {
+        stk.push(BigInt(block.gaslimit));
+        break;
+      }
+      // CHAINID
+      case 0x46: {
+        stk.push(BigInt(block.chainid));
         break;
       }
       // POP
