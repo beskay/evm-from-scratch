@@ -17,7 +17,7 @@ interface WorldState {
 
 interface AccountState {
   balance: string;
-  code: string;
+  code: { asm: string; bin: string };
   nonce: string;
   storage: string;
 }
@@ -46,7 +46,25 @@ class State {
 
     return accountState != undefined
       ? accountState
-      : { balance: "0x00", code: "0x00", nonce: "0x00", storage: "0x00" };
+      : {
+          balance: "0x00",
+          code: { asm: "", bin: "" },
+          nonce: "0x00",
+          storage: "0x00",
+        };
+  }
+}
+
+class Storage {
+  storage = new Map();
+
+  store(key: bigint, value: bigint) {
+    this.storage.set(key, value);
+  }
+
+  load(key: bigint): bigint {
+    let value = this.storage.get(key);
+    return value == undefined ? 0n : value;
   }
 }
 
@@ -178,6 +196,7 @@ export default function evm(
     state.init(_state);
   }
 
+  const stor = new Storage();
   const stk = new Stack();
   const mem = new Memory();
 
@@ -447,9 +466,64 @@ export default function evm(
         }
         break;
       }
+      // CODESIZE
+      case 0x38: {
+        stk.push(BigInt(code.length));
+        break;
+      }
+      // CODECOPY
+      case 0x39: {
+        let a = stk.pop(); // destOffset (byte offset in memory)
+        let b = stk.pop(); // offset (byte offset in the code to copy)
+        let c = stk.pop(); // size (byte size to copy)
+
+        for (let i = 0; i < Number(c); i++) {
+          let byteToStore: number | undefined = code[Number(b) + i];
+
+          // if undefined, store 0n
+          mem.store(a++, byteToStore == undefined ? 0n : BigInt(byteToStore));
+        }
+        break;
+      }
       // GASPRICE
       case 0x3a: {
         stk.push(BigInt(tx.gasprice));
+        break;
+      }
+      // EXTCODESIZE
+      case 0x3b: {
+        let a = stk.pop(); // address to query
+
+        // convert to hex string
+        let address = a.toString(16).padStart(40, "0");
+
+        // divide hex string length by 2 to get size in bytes
+        stk.push(
+          BigInt(state.accountState(`0x${address}`).code.bin.length / 2)
+        );
+        break;
+      }
+      // EXTCODECOPY
+      case 0x3c: {
+        let a = stk.pop(); // address to query
+        let b = stk.pop(); // destOffset (byte offset in memory)
+        let c = stk.pop(); // offset (byte offset in the code to copy)
+        let d = stk.pop(); // size (byte size to copy)
+
+        // convert to hex string
+        let address = a.toString(16).padStart(40, "0");
+        // convert code to uint8array
+        let codeAsString = state.accountState(`0x${address}`).code.bin;
+        let codeAsArray = new Uint8Array(
+          (codeAsString?.match(/../g) || []).map((byte) => parseInt(byte, 16))
+        );
+
+        for (let i = 0; i < Number(d); i++) {
+          let byteToStore: number | undefined = codeAsArray[Number(c) + i];
+
+          // if undefined, store 0n
+          mem.store(b++, byteToStore == undefined ? 0n : BigInt(byteToStore));
+        }
         break;
       }
       // COINBASE
@@ -482,6 +556,11 @@ export default function evm(
         stk.push(BigInt(block.chainid));
         break;
       }
+      // SELFBALANCE
+      case 0x47: {
+        stk.push(BigInt(state.accountState(tx.to).balance));
+        break;
+      }
       // POP
       case 0x50: {
         stk.pop();
@@ -508,6 +587,20 @@ export default function evm(
         let b = stk.pop(); // value
 
         mem.store(a, b);
+        break;
+      }
+      // SLOAD
+      case 0x54: {
+        let a = stk.pop(); // key
+        stk.push(stor.load(a));
+        break;
+      }
+      // SSTORE
+      case 0x55: {
+        let a = stk.pop(); // key
+        let b = stk.pop(); // key
+
+        stor.store(a, b);
         break;
       }
       // MSIZE
