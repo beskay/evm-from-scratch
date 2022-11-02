@@ -2,6 +2,54 @@ const keccak256 = require("keccak256");
 
 const MAX_UINT256 = (1n << 256n) - 1n; // 2**256 - 1
 
+interface Transaction {
+  to: string;
+  from: string;
+  origin: string;
+  gasprice: string;
+  value: string;
+  data: string;
+}
+
+interface WorldState {
+  [address: string]: AccountState;
+}
+
+interface AccountState {
+  balance: string;
+  code: string;
+  nonce: string;
+  storage: string;
+}
+
+interface Block {
+  coinbase: string;
+  timestamp: string;
+  number: string;
+  difficulty: string;
+  gaslimit: string;
+  chainid: string;
+}
+
+class State {
+  worldState = new Map();
+
+  init(state: WorldState) {
+    for (const [key, value] of Object.entries(state)) {
+      this.worldState.set(key, value);
+    }
+  }
+
+  accountState(address: string): AccountState {
+    // check if defined, if yes return balance
+    let accountState: AccountState = this.worldState.get(address);
+
+    return accountState != undefined
+      ? accountState
+      : { balance: "0x00", code: "0x00", nonce: "0x00", storage: "0x00" };
+  }
+}
+
 class Stack {
   stack: bigint[] = [];
 
@@ -84,50 +132,57 @@ class Memory {
   }
 }
 
-interface Transaction {
-  to: string;
-  from: string;
-  origin: string;
-  gasprice: string;
-  value: string;
-  data: string;
-}
+class Calldata {
+  calldata = new Uint8Array();
 
-interface State {
-  [address: string]: AccountState;
-}
+  init(data: string) {
+    this.calldata = new Uint8Array(
+      (data?.match(/../g) || []).map((byte) => parseInt(byte, 16))
+    );
+  }
 
-interface AccountState {
-  balance: string;
-  code: string;
-  nonce: string;
-  storage: string;
-}
+  // CALLDATALOAD
+  // load 32 bytes starting from offset
+  load(offset: bigint): bigint {
+    if (offset < 0n || offset > MAX_UINT256) throw new Error("Invalid offset");
 
-interface Block {
-  coinbase: string;
-  timestamp: string;
-  number: string;
-  difficulty: string;
-  gaslimit: string;
-  chainid: string;
+    let tmp: string = "";
+    for (let i = offset; i < offset + 32n; i++) {
+      if (i < this.size())
+        tmp += this.calldata[Number(i)].toString(16).padStart(2, "0");
+      else tmp += "00";
+    }
+    return BigInt(`0x${tmp}`);
+  }
+
+  // load a single byte from calldata
+  load_byte(offset: bigint): bigint {
+    if (offset < this.size()) return BigInt(this.calldata[Number(offset)]);
+    else return 0n;
+  }
+
+  // returns the calldata size in bytes
+  size(): bigint {
+    return BigInt(this.calldata.length);
+  }
 }
 
 export default function evm(
   code: Uint8Array,
   tx: Transaction,
-  state: State,
+  _state: WorldState,
   block: Block
 ) {
+  const state = new State();
+  if (_state != undefined) {
+    state.init(_state);
+  }
+
   const stk = new Stack();
   const mem = new Memory();
 
-  let worldState = new Map();
-  if (state != undefined) {
-    for (const [key, value] of Object.entries(state)) {
-      worldState.set(key, value);
-    }
-  }
+  const calldata = new Calldata();
+  if (tx != undefined) calldata.init(tx.data);
 
   for (let pc = 0; pc < code.length; pc++) {
     //console.log(`opcode ${code[pc]} and index ${pc}`);
@@ -350,11 +405,9 @@ export default function evm(
 
         // convert to hex string
         let address = a.toString(16).padStart(40, "0");
-        let accountState: AccountState = worldState.get(`0x${address}`);
+        let accountState: AccountState = state.accountState(`0x${address}`);
 
-        // check if defined, if yes return balance
-        let balance = accountState != undefined ? accountState.balance : 0n;
-        stk.push(BigInt(balance));
+        stk.push(BigInt(accountState.balance));
         break;
       }
       // ORIGIN
@@ -375,18 +428,12 @@ export default function evm(
       // CALLDATALOAD
       case 0x35: {
         let a = stk.pop(); // offset
-
-        // return string starting from offset padded to 64 characters
-        let data = tx.data.slice(Number(a * 2n)).padEnd(64, "0");
-
-        // convert hex string to bigint and push to stack
-        stk.push(BigInt(`0x${data}`));
+        stk.push(BigInt(calldata.load(a)));
         break;
       }
       // CALLDATASIZE
       case 0x36: {
-        let calldatasize = tx != undefined ? tx.data.length / 2 : 0;
-        stk.push(BigInt(calldatasize));
+        stk.push(calldata.size());
         break;
       }
       // CALLDATACOPY
@@ -395,15 +442,8 @@ export default function evm(
         let b = stk.pop(); // offset (byte offset in the calldata to copy)
         let c = stk.pop(); // size (byte size to copy)
 
-        let calldataslice = tx.data.slice(Number(b), Number(c * 2n));
-        console.log(b);
-        console.log(c);
-        console.log(calldataslice);
-        let calldataAsUint = BigInt(`0x${calldataslice}`);
         for (let i = 0; i < Number(c); i++) {
-          let byteToStore =
-            (calldataAsUint >> ((c - BigInt(i) - 1n) * 8n)) & 0xffn;
-          mem.store(a++, byteToStore);
+          mem.store(a++, calldata.load_byte(b++));
         }
         break;
       }
