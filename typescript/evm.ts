@@ -1,4 +1,5 @@
 const keccak256 = require("keccak256");
+const rlp = require("rlp");
 
 const MAX_UINT256 = (1n << 256n) - 1n; // 2**256 - 1
 
@@ -31,6 +32,11 @@ interface Block {
   chainid: string;
 }
 
+interface ReturnData {
+  success: boolean | undefined;
+  return: string | undefined;
+}
+
 class State {
   worldState = new Map();
 
@@ -38,6 +44,10 @@ class State {
     for (const [key, value] of Object.entries(state)) {
       this.worldState.set(key, value);
     }
+  }
+
+  createAccount(key: string, value: AccountState) {
+    this.worldState.set(key, value);
   }
 
   accountState(address: string): AccountState {
@@ -124,6 +134,12 @@ class Memory {
     return BigInt(`0x${tmp}`);
   }
 
+  // load a single byte from memory
+  load_byte(offset: bigint): bigint {
+    if (offset < this.size()) return BigInt(this.memory[Number(offset)]);
+    else return 0n;
+  }
+
   // memory is increased in chunks of 32 bytes
   // https://docs.soliditylang.org/en/latest/introduction-to-smart-contracts.html#storage-memory-and-the-stack
   // https://www.evm.codes/about#memoryexpansion
@@ -191,6 +207,8 @@ export default function evm(
   _state: WorldState,
   block: Block
 ) {
+  const returnData: ReturnData = { success: undefined, return: undefined };
+
   const state = new State();
   if (_state != undefined) {
     state.init(_state);
@@ -208,7 +226,9 @@ export default function evm(
     switch (code[pc]) {
       // STOP
       case 0x0: {
-        return { stack: stk.stack };
+        if (pc < code.length - 1) returnData.success = undefined;
+        else returnData.success = true;
+        return { stack: stk.stack, returnData: returnData };
       }
       // ADD
       case 0x01: {
@@ -930,7 +950,146 @@ export default function evm(
         stk.stack[0] = tmp;
         break;
       }
+      // CREATE
+      case 0xf0: {
+        let a = stk.pop(); // value in wei to send to new account
+        let b = stk.pop(); // byte offset in memory, initialisation code
+        let c = stk.pop(); // byte size to copy, size of initialisation code
 
+        // calculate address of new account
+        let nonce: number = Number(state.accountState(tx.to).nonce);
+        let address = `0x${keccak256(rlp.encode([tx.to, nonce]))
+          .toString("hex")
+          .slice(24)}`;
+        console.log(address);
+
+        // creation code
+        let creationCodeAsString: string = "";
+        for (let i = 0; i < Number(c); i++) {
+          creationCodeAsString += mem
+            .load_byte(b++)
+            .toString(16)
+            .padStart(2, "0");
+        }
+        let codeAsBytes = new Uint8Array(
+          (creationCodeAsString?.match(/../g) || []).map((byte) =>
+            parseInt(byte, 16)
+          )
+        );
+
+        // call EVM with subcontext
+        let result = evm(codeAsBytes, tx, _state, block);
+        console.log(result);
+
+        // if true, store return data as runtime code
+        let createState: AccountState = {
+          balance: a.toString(),
+          code: { asm: "", bin: result.returnData.return! },
+          nonce: "0x00",
+          storage: "0x00",
+        };
+        // create new account
+        state.createAccount(address, createState);
+
+        // push address of deployed contract if success, 0 if fail
+        //stk.push(result.returnData.success ? BigInt(address) : 0n);
+        stk.push(BigInt(address));
+        break;
+      }
+      // CALL
+      case 0xf1: {
+        let a = stk.pop(); // gas to forward
+        let b = stk.pop(); // address to call
+        let c = stk.pop(); // value to send
+        let d = stk.pop(); // byte offset in memory (call data in sub context)
+        let e = stk.pop(); // byte size to copy (size of calldata)
+        let f = stk.pop(); // byte offset in memory (where to store return data)
+        let g = stk.pop(); // byte size to copy (size of return data)
+
+        // create sub context calldata
+        let subCallAsString: string = "";
+        for (let i = 0; i < Number(e); i++) {
+          subCallAsString += mem
+            .load_byte(d++)
+            .toString(16)
+            .padStart(2, "0");
+        }
+
+        // create subcontext tx
+        let subTx: Transaction = {
+          to: `0x${b.toString(16).padStart(40, "0")}`,
+          from: tx != undefined ? tx.to : "0x00",
+          origin: tx != undefined ? tx.origin : "0x00",
+          gasprice: tx != undefined ? tx.gasprice : "0x00",
+          value: c.toString(16),
+          data: subCallAsString,
+        };
+
+        // address to call
+        let address = b.toString(16).padStart(40, "0");
+        let subContextCode = state.accountState(`0x${address}`).code.bin;
+        let subContextCodeAsUint8 = new Uint8Array(
+          (subContextCode?.match(/../g) || []).map((byte) => parseInt(byte, 16))
+        );
+
+        // call EVM with subcontext
+        let result = evm(subContextCodeAsUint8, subTx, _state, block);
+
+        // convert return string to byte array
+        let returnAsBytes = new Uint8Array(
+          (result.returnData.return?.match(/../g) || []).map((byte) =>
+            parseInt(byte, 16)
+          )
+        );
+        // store byte array in memory
+        for (let i = 0; i < Number(g); i++) {
+          let byteToStore: number | undefined = returnAsBytes[i];
+          // if undefined, store 0n
+          mem.store(f++, byteToStore == undefined ? 0n : BigInt(byteToStore));
+        }
+
+        // push 0 if sub context reverted, 1 otherwise
+        stk.push(result.returnData.success ? 1n : 0n);
+
+        break;
+      }
+      // RETURN
+      case 0xf3: {
+        let a = stk.pop(); // offset (byte offset in the memory to copy)
+        let b = stk.pop(); // size (byte size to copy)
+
+        let tmp: string = "";
+        for (let i = 0; i < Number(b); i++) {
+          tmp += mem
+            .load_byte(a++)
+            .toString(16)
+            .padStart(2, "0");
+        }
+
+        // exits successfully
+        returnData.success = true;
+        returnData.return = tmp;
+
+        return { stack: stk.stack, returnData: returnData };
+      }
+      // REVERT
+      case 0xfd: {
+        let a = stk.pop(); // offset (byte offset in the memory to copy)
+        let b = stk.pop(); // size (byte size to copy)
+
+        let tmp: string = "";
+        for (let i = 0; i < Number(b); i++) {
+          tmp += mem
+            .load_byte(a++)
+            .toString(16)
+            .padStart(2, "0");
+        }
+
+        returnData.success = false;
+        returnData.return = tmp;
+
+        return { stack: stk.stack, returnData: returnData };
+      }
       // default case for non implemented opcodes
       default: {
         break;
@@ -939,5 +1098,5 @@ export default function evm(
   }
 
   //console.log(stk.stack);
-  return { stack: stk.stack };
+  return { stack: stk.stack, returnData: returnData };
 }
