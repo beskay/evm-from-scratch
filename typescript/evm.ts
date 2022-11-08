@@ -238,7 +238,7 @@ export default function evm(
       // STOP
       case 0x0: {
         // exits the current context successfully
-        if (pc === code.length - 1) returnData.success = true;
+        const returnData: ReturnData = { success: true };
         return { stack: stk.stack, returnData: returnData };
       }
       // ADD
@@ -1092,7 +1092,6 @@ export default function evm(
         let address = `0x${keccak256(rlp.encode([tx.to, nonce]))
           .toString("hex")
           .slice(24)}`;
-        console.log(address);
 
         // creation code
         let creationCodeAsString: string = "";
@@ -1110,24 +1109,23 @@ export default function evm(
 
         // call EVM with subcontext
         let result = evm(codeAsBytes, tx, _state, block);
-        console.log(result);
 
         // store return data as runtime code
-        let createState: AccountState = {
+        let newAccount: AccountState = {
           balance: a.toString(),
           code: {
             asm: "",
             bin:
               result.returnData.return === undefined
-                ? "0x00"
+                ? ""
                 : result.returnData.return,
           },
           nonce: "0x00",
           storage: "0x00",
         };
-        console.log(createState.code.bin);
+
         // create new account
-        state.createAccount(address, createState);
+        state.createAccount(address, newAccount);
 
         // push address of the deployed contract, 0 if the deployment failed.
         stk.push(result.returnData.success === false ? 0n : BigInt(address));
@@ -1204,8 +1202,7 @@ export default function evm(
         }
 
         // exits successfully
-        returnData.success = true;
-        returnData.return = tmp;
+        const returnData: ReturnData = { success: true, return: tmp };
 
         return { stack: stk.stack, returnData: returnData };
       }
@@ -1222,8 +1219,8 @@ export default function evm(
             .padStart(2, "0");
         }
 
-        returnData.success = false;
-        returnData.return = tmp;
+        // exits with error
+        const returnData: ReturnData = { success: false, return: tmp };
 
         return { stack: stk.stack, returnData: returnData };
       }
@@ -1234,6 +1231,5 @@ export default function evm(
     }
   }
 
-  //console.log(stk.stack);
   return { stack: stk.stack, returnData: returnData };
 }
