@@ -32,9 +32,10 @@ interface Block {
   chainid: string;
 }
 
+// returndata can be undefined
 interface ReturnData {
-  success: boolean | undefined;
-  return: string | undefined;
+  success?: boolean;
+  return?: string;
 }
 
 class State {
@@ -46,6 +47,7 @@ class State {
     }
   }
 
+  // CREATE
   createAccount(key: string, value: AccountState) {
     this.worldState.set(key, value);
   }
@@ -54,7 +56,7 @@ class State {
     // check if defined, if yes return balance
     let accountState: AccountState = this.worldState.get(address);
 
-    return accountState != undefined
+    return accountState !== undefined
       ? accountState
       : {
           balance: "0x00",
@@ -74,7 +76,7 @@ class Storage {
 
   load(key: bigint): bigint {
     let value = this.storage.get(key);
-    return value == undefined ? 0n : value;
+    return value === undefined ? 0n : value;
   }
 }
 
@@ -82,7 +84,7 @@ class Stack {
   stack: bigint[] = [];
 
   pop(): bigint {
-    if (this.stack.length == 0) throw new Error("Stack underflow");
+    if (this.stack.length === 0) throw new Error("Stack underflow");
     // shift is like pop, but removes the first element in the array
     return this.stack.shift() as bigint;
   }
@@ -156,7 +158,7 @@ class Memory {
       this.memory.push(0x00n);
 
     // make sure length is multiple of 32
-    if (this.memory.length % 32 != 0) throw new Error("invalid memory length");
+    if (this.memory.length % 32 !== 0) throw new Error("invalid memory length");
   }
 
   // returns the memory size in bytes
@@ -207,10 +209,8 @@ export default function evm(
   _state: WorldState,
   block: Block
 ) {
-  const returnData: ReturnData = { success: undefined, return: undefined };
-
   const state = new State();
-  if (_state != undefined) {
+  if (_state !== undefined) {
     state.init(_state);
   }
 
@@ -219,15 +219,18 @@ export default function evm(
   const mem = new Memory();
 
   const calldata = new Calldata();
-  if (tx != undefined) calldata.init(tx.data);
+  if (tx !== undefined) calldata.init(tx.data);
+
+  // define return data
+  const returnData: ReturnData = { success: undefined, return: undefined };
 
   for (let pc = 0; pc < code.length; pc++) {
     //console.log(`opcode ${code[pc]} and index ${pc}`);
     switch (code[pc]) {
       // STOP
       case 0x0: {
-        if (pc < code.length - 1) returnData.success = undefined;
-        else returnData.success = true;
+        // exit the current context successfully if address with no code is called
+        if (pc === code.length - 1) returnData.success = true;
         return { stack: stk.stack, returnData: returnData };
       }
       // ADD
@@ -267,7 +270,7 @@ export default function evm(
         let b = stk.pop();
 
         // if division by zero, return 0
-        if (b == 0n) {
+        if (b === 0n) {
           stk.push(0n);
           break;
         }
@@ -282,7 +285,7 @@ export default function evm(
         const b = BigInt.asIntN(32, stk.pop());
 
         // if division by zero, return 0
-        if (b == 0n) {
+        if (b === 0n) {
           stk.push(0n);
           break;
         }
@@ -298,7 +301,7 @@ export default function evm(
         let b = stk.pop();
 
         // if mod zero, return 0
-        if (b == 0n) {
+        if (b === 0n) {
           stk.push(0n);
           break;
         }
@@ -313,7 +316,7 @@ export default function evm(
         const b = BigInt.asIntN(32, stk.pop());
 
         // if mod zero, return 0
-        if (b == 0n) {
+        if (b === 0n) {
           stk.push(0n);
           break;
         }
@@ -428,7 +431,7 @@ export default function evm(
 
         // convert bigint value to hex string and hash it
         let hash = keccak256(`0x${bytesToHash.toString(16)}`).toString("hex");
-        // convert hash string back to bigint
+        // convert hash string back to bigint and push to stack
         stk.push(BigInt(`0x${hash}`));
 
         break;
@@ -501,7 +504,7 @@ export default function evm(
           let byteToStore: number | undefined = code[Number(b) + i];
 
           // if undefined, store 0n
-          mem.store(a++, byteToStore == undefined ? 0n : BigInt(byteToStore));
+          mem.store(a++, byteToStore === undefined ? 0n : BigInt(byteToStore));
         }
         break;
       }
@@ -542,7 +545,7 @@ export default function evm(
           let byteToStore: number | undefined = codeAsArray[Number(c) + i];
 
           // if undefined, store 0n
-          mem.store(b++, byteToStore == undefined ? 0n : BigInt(byteToStore));
+          mem.store(b++, byteToStore === undefined ? 0n : BigInt(byteToStore));
         }
         break;
       }
@@ -642,12 +645,18 @@ export default function evm(
         let a = stk.pop(); // JUMPDEST
         let b = stk.pop(); // Condition (1 = jump, 0 = continue as usual)
 
-        if (b != 0n) pc = Number(a);
+        if (b !== 0n) pc = Number(a);
         break;
       }
       // PC
       case 0x58: {
         stk.push(BigInt(pc));
+        break;
+      }
+      // JUMPDEST
+      case 0x5b: {
+        // Mark a valid destination for JUMP or JUMPI
+        // This operation has no effect on machine state during execution.
         break;
       }
       // PUSH1
@@ -981,19 +990,25 @@ export default function evm(
         let result = evm(codeAsBytes, tx, _state, block);
         console.log(result);
 
-        // if true, store return data as runtime code
+        // store return data as runtime code
         let createState: AccountState = {
           balance: a.toString(),
-          code: { asm: "", bin: result.returnData.return! },
+          code: {
+            asm: "",
+            bin:
+              result.returnData.return === undefined
+                ? "0x00"
+                : result.returnData.return,
+          },
           nonce: "0x00",
           storage: "0x00",
         };
+        console.log(createState.code.bin);
         // create new account
         state.createAccount(address, createState);
 
-        // push address of deployed contract if success, 0 if fail
-        //stk.push(result.returnData.success ? BigInt(address) : 0n);
-        stk.push(BigInt(address));
+        // push address of the deployed contract, 0 if the deployment failed.
+        stk.push(result.returnData.success === false ? 0n : BigInt(address));
         break;
       }
       // CALL
@@ -1018,9 +1033,9 @@ export default function evm(
         // create subcontext tx
         let subTx: Transaction = {
           to: `0x${b.toString(16).padStart(40, "0")}`,
-          from: tx != undefined ? tx.to : "0x00",
-          origin: tx != undefined ? tx.origin : "0x00",
-          gasprice: tx != undefined ? tx.gasprice : "0x00",
+          from: tx !== undefined ? tx.to : "0x00",
+          origin: tx !== undefined ? tx.origin : "0x00",
+          gasprice: tx !== undefined ? tx.gasprice : "0x00",
           value: c.toString(16),
           data: subCallAsString,
         };
@@ -1045,7 +1060,7 @@ export default function evm(
         for (let i = 0; i < Number(g); i++) {
           let byteToStore: number | undefined = returnAsBytes[i];
           // if undefined, store 0n
-          mem.store(f++, byteToStore == undefined ? 0n : BigInt(byteToStore));
+          mem.store(f++, byteToStore === undefined ? 0n : BigInt(byteToStore));
         }
 
         // push 0 if sub context reverted, 1 otherwise
@@ -1092,7 +1107,7 @@ export default function evm(
       }
       // default case for non implemented opcodes
       default: {
-        break;
+        throw new Error("Unimplemented opcode");
       }
     }
   }
