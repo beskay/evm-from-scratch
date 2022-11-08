@@ -96,6 +96,14 @@ class Stack {
     // unshift is like push(), except it adds elements to the beginning of an array
     this.stack.unshift(value);
   }
+
+  swap(value: number) {
+    if (this.stack.length < value) throw new Error("Stack underflow");
+
+    let tmp = this.stack[value];
+    this.stack[value] = this.stack[0];
+    this.stack[0] = tmp;
+  }
 }
 
 class Memory {
@@ -229,7 +237,7 @@ export default function evm(
     switch (code[pc]) {
       // STOP
       case 0x0: {
-        // exit the current context successfully if address with no code is called
+        // exits the current context successfully
         if (pc === code.length - 1) returnData.success = true;
         return { stack: stk.stack, returnData: returnData };
       }
@@ -938,25 +946,139 @@ export default function evm(
         stk.push(stk.stack[4]);
         break;
       }
+      // DUP6
+      case 0x85: {
+        stk.push(stk.stack[5]);
+        break;
+      }
+      // DUP7
+      case 0x86: {
+        stk.push(stk.stack[6]);
+        break;
+      }
+      // DUP8
+      case 0x87: {
+        stk.push(stk.stack[7]);
+        break;
+      }
+      // DUP9
+      case 0x88: {
+        stk.push(stk.stack[8]);
+        break;
+      }
+      // DUP10
+      case 0x89: {
+        stk.push(stk.stack[9]);
+        break;
+      }
+      // DUP11
+      case 0x8a: {
+        stk.push(stk.stack[10]);
+        break;
+      }
+      // DUP12
+      case 0x8b: {
+        stk.push(stk.stack[11]);
+        break;
+      }
+      // DUP13
+      case 0x8c: {
+        stk.push(stk.stack[12]);
+        break;
+      }
+      // DUP14
+      case 0x8d: {
+        stk.push(stk.stack[13]);
+        break;
+      }
+      // DUP15
+      case 0x8e: {
+        stk.push(stk.stack[14]);
+        break;
+      }
+      // DUP16
+      case 0x8f: {
+        stk.push(stk.stack[15]);
+        break;
+      }
       // SWAP1
       case 0x90: {
-        let tmp = stk.stack[1];
-        stk.stack[1] = stk.stack[0];
-        stk.stack[0] = tmp;
+        stk.swap(1);
         break;
       }
       // SWAP2
       case 0x91: {
-        let tmp = stk.stack[2];
-        stk.stack[2] = stk.stack[0];
-        stk.stack[0] = tmp;
+        stk.swap(2);
         break;
       }
       // SWAP3
       case 0x92: {
-        let tmp = stk.stack[3];
-        stk.stack[3] = stk.stack[0];
-        stk.stack[0] = tmp;
+        stk.swap(3);
+        break;
+      }
+      // SWAP4
+      case 0x93: {
+        stk.swap(4);
+        break;
+      }
+      // SWAP5
+      case 0x94: {
+        stk.swap(5);
+        break;
+      }
+      // SWAP6
+      case 0x95: {
+        stk.swap(6);
+        break;
+      }
+      // SWAP7
+      case 0x96: {
+        stk.swap(7);
+        break;
+      }
+      // SWAP8
+      case 0x97: {
+        stk.swap(8);
+        break;
+      }
+      // SWAP9
+      case 0x98: {
+        stk.swap(9);
+        break;
+      }
+      // SWAP10
+      case 0x99: {
+        stk.swap(10);
+        break;
+      }
+      // SWAP11
+      case 0x9a: {
+        stk.swap(11);
+        break;
+      }
+      // SWAP12
+      case 0x9b: {
+        stk.swap(12);
+        break;
+      }
+      // SWAP13
+      case 0x9c: {
+        stk.swap(13);
+        break;
+      }
+      // SWAP14
+      case 0x9d: {
+        stk.swap(14);
+        break;
+      }
+      // SWAP15
+      case 0x9e: {
+        stk.swap(15);
+        break;
+      }
+      // SWAP16
+      case 0x9f: {
+        stk.swap(16);
         break;
       }
       // CREATE
