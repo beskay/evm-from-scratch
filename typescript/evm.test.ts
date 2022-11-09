@@ -18,7 +18,8 @@ for (const t of tests as any) {
       expect(result.stack).toEqual(t.expect.stack.map((item) => BigInt(item)));
     if (t.expect.success !== undefined)
       expect(result.returnData.success).toEqual(t.expect.success);
-    expect(result.returnData.return).toEqual(t.expect.return);
+    if (t.expect.return !== undefined)
+      expect(result.returnData.return).toEqual(t.expect.return);
   });
 }
 

@@ -229,8 +229,8 @@ export default function evm(
   const calldata = new Calldata();
   if (tx !== undefined) calldata.init(tx.data);
 
-  // define return data
-  const returnData: ReturnData = { success: undefined, return: undefined };
+  // define return data, default: true
+  let returnData: ReturnData = { success: true, return: "" };
 
   for (let pc = 0; pc < code.length; pc++) {
     //console.log(`opcode ${code[pc]} and index ${pc}`);
@@ -238,7 +238,6 @@ export default function evm(
       // STOP
       case 0x0: {
         // exits the current context successfully
-        const returnData: ReturnData = { success: true };
         return { stack: stk.stack, returnData: returnData };
       }
       // ADD
@@ -1202,7 +1201,7 @@ export default function evm(
         }
 
         // exits successfully
-        const returnData: ReturnData = { success: true, return: tmp };
+        returnData = { success: true, return: tmp };
 
         return { stack: stk.stack, returnData: returnData };
       }
@@ -1220,7 +1219,7 @@ export default function evm(
         }
 
         // exits with error
-        const returnData: ReturnData = { success: false, return: tmp };
+        returnData = { success: false, return: tmp };
 
         return { stack: stk.stack, returnData: returnData };
       }
